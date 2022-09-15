@@ -20,9 +20,6 @@ class Builder {
     }
 
     createBuildStream(buildOpts) {
-        const layers = [];
-        const fromTags = [];
-
         const inputStream = es.through();
         const dup = duplexify();
         dup.setWritable(inputStream);
@@ -39,7 +36,7 @@ class Builder {
         Bluebird.try(() => this.docker.buildImage(inputStream, buildOpts))
 			.then((daemonStream) => {
 				return new Bluebird((resolve, reject) => {
-					const outputStream = getDockerDaemonBuildOutputParserStream(daemonStream, layers, fromTags, reject);
+					const outputStream = getDockerDaemonBuildOutputParserStream(daemonStream, reject);
 					outputStream.on('error', (error) => {
 						daemonStream.unpipe();
 						reject(error);
@@ -73,7 +70,7 @@ class Builder {
 }
 
 exports.default = Builder;
-function getDockerDaemonBuildOutputParserStream(daemonStream, layers, fromImageTags, onError) {
+function getDockerDaemonBuildOutputParserStream(daemonStream, onError) {
     const fromAliases = new Set();
     return (daemonStream
         .pipe(JSONStream.parse())
@@ -86,15 +83,8 @@ function getDockerDaemonBuildOutputParserStream(daemonStream, layers, fromImageT
                 throw new Error(data.error);
             }
             else {
-                const sha = Utils.extractLayer(data.stream);
-                if (sha !== undefined) {
-                    layers.push(sha);
-                }
                 const fromTag = Utils.extractFromTag(data.stream);
                 if (fromTag !== undefined) {
-                    if (!fromAliases.has(fromTag.repo)) {
-                        fromImageTags.push(fromTag);
-                    }
                     if (fromTag.alias) {
                         fromAliases.add(fromTag.alias);
                     }
@@ -108,4 +98,3 @@ function getDockerDaemonBuildOutputParserStream(daemonStream, layers, fromImageT
         }
     })));
 }
-//# sourceMappingURL=builder.js.map
