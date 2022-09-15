@@ -36,21 +36,20 @@ class Builder {
         inputStream.on('error', failBuild);
         dup.on('error', failBuild);
         
-        const buildPromise = Bluebird.try(() => this.docker.buildImage(inputStream, buildOpts)).then((daemonStream) => {
-            return new Bluebird((resolve, reject) => {
-                const outputStream = getDockerDaemonBuildOutputParserStream(daemonStream, layers, fromTags, reject);
-                outputStream.on('error', (error) => {
-                    daemonStream.unpipe();
-                    reject(error);
-                });
-                outputStream.on('end', () => streamError ? reject(streamError) : resolve());
-                dup.setReadable(outputStream);
-            });
-        });
-        Bluebird.all([
-            buildPromise,
-        ])
-            .catch(failBuild);
+        Bluebird.try(() => this.docker.buildImage(inputStream, buildOpts))
+			.then((daemonStream) => {
+				return new Bluebird((resolve, reject) => {
+					const outputStream = getDockerDaemonBuildOutputParserStream(daemonStream, layers, fromTags, reject);
+					outputStream.on('error', (error) => {
+						daemonStream.unpipe();
+						reject(error);
+					});
+					outputStream.on('end', () => streamError ? reject(streamError) : resolve());
+					dup.setReadable(outputStream);
+				});
+			})
+			.catch(failBuild);
+
         return dup;
     }
 
