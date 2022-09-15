@@ -10,31 +10,32 @@ const fs = require("mz/fs");
 const path = require("path");
 const tar = require("tar-stream");
 const Utils = require("./utils");
-const emptyHandler = () => undefined;
+
 class Builder {
-    constructor(docker) {
-        this.docker = docker;
+    constructor() {
+        this.docker = new Dockerode({
+            Promise: Bluebird,
+            socketPath: '/var/run/docker.sock'
+        });
     }
-    static fromDockerode(docker) {
-        return new Builder(docker);
-    }
-    static fromDockerOpts(dockerOpts) {
-        return new Builder(new Dockerode(_.merge(dockerOpts, { Promise: Bluebird })));
-    }
-    createBuildStream(buildOpts, hooks = {}, handler = emptyHandler) {
+
+    createBuildStream(buildOpts) {
         const layers = [];
         const fromTags = [];
+
         const inputStream = es.through();
         const dup = duplexify();
         dup.setWritable(inputStream);
+
         let streamError;
         const failBuild = _.once((err) => {
             streamError = err;
             dup.destroy(err);
-            return this.callHook(hooks, 'buildFailure', handler, err, layers, fromTags);
+            return null;
         });
         inputStream.on('error', failBuild);
         dup.on('error', failBuild);
+        
         const buildPromise = Bluebird.try(() => this.docker.buildImage(inputStream, buildOpts)).then((daemonStream) => {
             return new Bluebird((resolve, reject) => {
                 const outputStream = getDockerDaemonBuildOutputParserStream(daemonStream, layers, fromTags, reject);
@@ -48,17 +49,12 @@ class Builder {
         });
         Bluebird.all([
             buildPromise,
-            this.callHook(hooks, 'buildStream', handler, dup),
         ])
-            .then(() => {
-            if (!streamError) {
-                return this.callHook(hooks, 'buildSuccess', handler, _.last(layers), layers, fromTags);
-            }
-        })
             .catch(failBuild);
         return dup;
     }
-    buildDir(dirPath, buildOpts, hooks, handler = emptyHandler) {
+
+    buildDir(dirPath, buildOpts) {
         const pack = tar.pack();
         return Utils.directoryToFiles(dirPath)
             .map((file) => {
@@ -70,24 +66,13 @@ class Builder {
         })
             .then(() => {
             pack.finalize();
-            const stream = this.createBuildStream(buildOpts, hooks, handler);
+            const stream = this.createBuildStream(buildOpts);
             pack.pipe(stream);
             return stream;
         });
     }
-    callHook(hooks, hook, handler, ...args) {
-        return Bluebird.try(() => {
-            const fn = hooks[hook];
-            if (_.isFunction(fn)) {
-                return fn.apply(null, args);
-            }
-        }).tapCatch((error) => {
-            if (_.isFunction(handler)) {
-                handler(error);
-            }
-        });
-    }
 }
+
 exports.default = Builder;
 function getDockerDaemonBuildOutputParserStream(daemonStream, layers, fromImageTags, onError) {
     const fromAliases = new Set();

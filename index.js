@@ -1,6 +1,7 @@
 "use strict";
 const Builder = require("./builder").default;
-const builder = Builder.fromDockerOpts({ socketPath: '/var/run/docker.sock' });
+
+const builder = new Builder();
 const hooks = {
     buildSuccess: (imageId, _layers) => {
         console.log(`Successful build! ImageId: ${imageId}`);
@@ -10,7 +11,9 @@ const hooks = {
     }
 };
 builder
-    .buildDir('test-files', {}, hooks)
+    .buildDir('test-files')
     .then((stream) => {
-    stream.pipe(process.stdout);
-});
+        if (stream) {
+            stream.pipe(process.stdout);
+        }
+    });
