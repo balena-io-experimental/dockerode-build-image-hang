@@ -8,17 +8,48 @@ const _ = require("lodash");
 const fs = require("mz/fs");
 const path = require("path");
 const tar = require("tar-stream");
-const Utils = require("./utils");
+const klaw = require("klaw");
 
 const docker = new Dockerode({
     Promise: Bluebird,
     socketPath: '/var/run/docker.sock'
 });
 
+const fromTagPattern = /^(Step.+?\s*:\s*)?FROM\s+([\w-./]+)(:?([\w-./]+))?\s*(as\s+([\w-./]+))?/;
+function extractFromTag(message) {
+    const match = fromTagPattern.exec(message);
+    if (!match) {
+        return undefined;
+    }
+    const res = {
+        repo: match[2],
+        tag: match[4] || 'latest',
+    };
+    if (match[6]) {
+        res.alias = match[6];
+    }
+    return res;
+}
+
+function directoryToFiles(dirPath) {
+    return new Bluebird((resolve, reject) => {
+        const files = [];
+        klaw(dirPath)
+            .on('data', (item) => {
+            if (!item.stats.isDirectory()) {
+                files.push(item.path);
+            }
+        })
+            .on('end', () => {
+            resolve(files);
+        })
+            .on('error', reject);
+    });
+}
 
 function buildDir(dirPath) {
     const pack = tar.pack();
-    return Utils.directoryToFiles(dirPath)
+    return directoryToFiles(dirPath)
         .map((file) => {
         const relPath = path.relative(path.resolve(dirPath), file);
         return Bluebird.all([relPath, fs.stat(file), fs.readFile(file)]);
@@ -78,7 +109,7 @@ function getDockerDaemonBuildOutputParserStream(daemonStream, onError) {
                 throw new Error(data.error);
             }
             else {
-                const fromTag = Utils.extractFromTag(data.stream);
+                const fromTag = extractFromTag(data.stream);
                 if (fromTag !== undefined) {
                     if (fromTag.alias) {
                         fromAliases.add(fromTag.alias);
