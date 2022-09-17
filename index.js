@@ -39,8 +39,7 @@ function createBuildStream() {
     inputStream.on('error', failBuild);
     dup.on('error', failBuild);
     
-    Bluebird.try(() => docker.buildImage(inputStream, {}))
-        .then((daemonStream) => {
+    Bluebird.try(() => docker.buildImage(inputStream, {}, (err, daemonStream) => {
             return new Bluebird((resolve, reject) => {
                 const outputStream = getBuildOutputStream(daemonStream, reject);
                 outputStream.on('error', (error) => {
@@ -50,7 +49,7 @@ function createBuildStream() {
                 outputStream.on('end', () => streamError ? reject(streamError) : resolve());
                 dup.setReadable(outputStream);
             });
-        })
+        }))
         .catch(failBuild);
 
     return dup;
