@@ -13,7 +13,18 @@ const docker = new Dockerode({
     socketPath: '/var/run/docker.sock'
 });
 
+/**
+ * Start a build with the docker daemon, and return the stream to the caller.
+ * The stream can be written to, and the docker daemon will interpret that
+ * as a tar archive to build. The stream can also be read from, and the data
+ * returned will be the output of the docker daemon build.
+ *
+ * @returns A bi-directional stream connected to the docker daemon
+ */
 function createBuildStream() {
+    // As data is written to inputStream, it will become readable synchronously
+    // in the same stream for buildImage().
+    // https://github.com/dominictarr/event-stream#through-write-end
     const inputStream = es.through();
     const dup = duplexify();
     dup.setWritable(inputStream);
@@ -45,6 +56,12 @@ function createBuildStream() {
     return dup;
 }
 
+/**
+ * Return an event stream capable of parsing a docker daemon's JSON object output.
+ * 
+ * @param daemonStream: Docker daemon's output stream (dockerode.buildImage)
+ * @param onError Error callback
+ */
 function getBuildOutputStream(daemonStream, onError) {
     const fromAliases = new Set();
     return (daemonStream
@@ -75,6 +92,7 @@ function getBuildOutputStream(daemonStream, onError) {
 }
 
 const fromTagPattern = /^(Step.+?\s*:\s*)?FROM\s+([\w-./]+)(:?([\w-./]+))?\s*(as\s+([\w-./]+))?/;
+
 function extractFromTag(message) {
     const match = fromTagPattern.exec(message);
     if (!match) {
@@ -91,11 +109,16 @@ function extractFromTag(message) {
 }
 
 
+// Build tar stream from Dockerfile. Created sync here, but usually async.
 const pack = tar.pack();
 const pathName = 'Dockerfile';
 pack.entry(
     { name: pathName, size: fs.statSync(pathName).size }, fs.readFileSync(pathName));
 pack.finalize();
+
+// Create stream to pipe tar data to Docker to build image and print output
 const stream = createBuildStream();
+
+// Let's go!
 pack.pipe(stream);
 stream.pipe(process.stdout);
