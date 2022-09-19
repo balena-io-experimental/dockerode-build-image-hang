@@ -91,9 +91,8 @@ function getBuildOutputStream(daemonStream, onError) {
     })));
 }
 
-const fromTagPattern = /^(Step.+?\s*:\s*)?FROM\s+([\w-./]+)(:?([\w-./]+))?\s*(as\s+([\w-./]+))?/;
-
 function extractFromTag(message) {
+    const fromTagPattern = /^(Step.+?\s*:\s*)?FROM\s+([\w-./]+)(:?([\w-./]+))?\s*(as\s+([\w-./]+))?/;
     const match = fromTagPattern.exec(message);
     if (!match) {
         return undefined;
