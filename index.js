@@ -120,4 +120,5 @@ const stream = createBuildStream();
 
 // Let's go!
 pack.pipe(stream);
+// Display docker stream output
 stream.pipe(process.stdout);
